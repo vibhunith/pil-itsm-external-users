@@ -1,0 +1,641 @@
+'use client';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
+import Select from '@/components/ui/Select';
+import Alert from '@/components/ui/Alert';
+import Spinner from '@/components/ui/Spinner';
+import { CheckCircle2, Upload, X, FileText, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import type { SystemItem, ModuleItem, SubModuleItem } from '@/types/master';
+
+// ---------------------------------------------------------------------------
+// Step definitions
+// ---------------------------------------------------------------------------
+const STEPS = [
+  { id: 1, label: 'Issue Scope' },
+  { id: 2, label: 'Module Mapping' },
+  { id: 3, label: 'Problem Assessment' },
+  { id: 4, label: 'Issue Details' },
+  { id: 5, label: 'Review & Submit' },
+];
+
+const URGENCY_OPTIONS = [
+  { value: 'Critical', label: 'Critical' },
+  { value: 'High', label: 'High' },
+  { value: 'Medium', label: 'Medium' },
+  { value: 'Low', label: 'Low' },
+];
+
+const MAX_FILES = 6;
+const MAX_FILE_SIZE_MB = 40;
+const ALLOWED_TYPES = [
+  'image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp',
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/zip',
+];
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+export default function CreateTicketPage() {
+  const router = useRouter();
+  const [step, setStep] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [successTicket, setSuccessTicket] = useState('');
+
+  // Form state
+  const [subject, setSubject] = useState('');
+  const [system, setSystem] = useState('');
+  const [systemId, setSystemId] = useState('');
+  const [module, setModule] = useState('');
+  const [moduleId, setModuleId] = useState('');
+  const [subModule, setSubModule] = useState('');
+  const [subModuleId, setSubModuleId] = useState('');
+  const [urgency, setUrgency] = useState('');
+  const [impact, setImpact] = useState('');
+  const [priority, setPriority] = useState('');
+  const [issueDescription, setIssueDescription] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const [fileErrors, setFileErrors] = useState<string[]>([]);
+
+  // Masters
+  const [systems, setSystems] = useState<SystemItem[]>([]);
+  const [modules, setModules] = useState<ModuleItem[]>([]);
+  const [subModules, setSubModules] = useState<SubModuleItem[]>([]);
+  const [loadingSystems, setLoadingSystems] = useState(true);
+  const [loadingModules, setLoadingModules] = useState(false);
+  const [loadingSubModules, setLoadingSubModules] = useState(false);
+
+  // SLA preview
+  const [slaPreview, setSlaPreview] = useState<{ priority: string; respond: string; resolve: string } | null>(null);
+
+  // Validation errors
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const editorRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load systems on mount
+  useEffect(() => {
+    fetch('/api/masters/systems')
+      .then((r) => r.json())
+      .then((data) => setSystems(Array.isArray(data) ? data : []))
+      .catch(console.error)
+      .finally(() => setLoadingSystems(false));
+  }, []);
+
+  // Load modules when system changes
+  useEffect(() => {
+    if (!system) { setModules([]); setModule(''); setModuleId(''); setSubModule(''); setSubModuleId(''); return; }
+    // Derive systemId from systems list directly (avoid stale state)
+    const found = systems.find((s) => s.system === system);
+    const sid = found?.id ?? systemId;
+    if (!sid) return;
+    setLoadingModules(true);
+    setModule(''); setModuleId(''); setSubModule(''); setSubModuleId(''); setSubModules([]);
+    fetch(`/api/masters/modules?systemId=${encodeURIComponent(sid)}`)
+      .then((r) => r.json())
+      .then((data) => setModules(Array.isArray(data) ? data : []))
+      .catch(console.error)
+      .finally(() => setLoadingModules(false));
+  }, [system, systems]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load submodules when module changes
+  useEffect(() => {
+    if (!moduleId) { setSubModules([]); setSubModule(''); setSubModuleId(''); return; }
+    setLoadingSubModules(true);
+    setSubModule('');
+    fetch(`/api/masters/submodules?moduleId=${moduleId}`)
+      .then((r) => r.json())
+      .then((data) => setSubModules(Array.isArray(data) ? data : []))
+      .catch(console.error)
+      .finally(() => setLoadingSubModules(false));
+  }, [moduleId]);
+
+  // Fetch SLA preview when urgency + impact selected
+  const fetchSLA = useCallback(async () => {
+    if (!urgency || !impact) { setSlaPreview(null); return; }
+    try {
+      const res = await fetch(`/api/sla?urgency=${urgency}&impact=${impact}`);
+      const data = await res.json();
+      if (data.policy) {
+        setPriority(data.policy.priority);
+        setSlaPreview({
+          priority: data.policy.priority,
+          respond: data.sla?.initialResponseClockSLA
+            ? new Date(data.sla.initialResponseClockSLA).toLocaleString()
+            : '—',
+          resolve: data.sla?.initialResolutionClockSLA
+            ? new Date(data.sla.initialResolutionClockSLA).toLocaleString()
+            : '—',
+        });
+      } else {
+        setPriority(urgency); // fallback
+        setSlaPreview(null);
+      }
+    } catch {
+      setSlaPreview(null);
+    }
+  }, [urgency, impact]);
+
+  useEffect(() => { fetchSLA(); }, [fetchSLA]);
+
+  // -------------------------------------------------------------------------
+  // File handling
+  // -------------------------------------------------------------------------
+  function handleFiles(incoming: FileList | null) {
+    if (!incoming) return;
+    const errs: string[] = [];
+    const valid: File[] = [];
+
+    Array.from(incoming).forEach((f) => {
+      if (files.length + valid.length >= MAX_FILES) {
+        errs.push(`Max ${MAX_FILES} files allowed.`);
+        return;
+      }
+      if (f.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+        errs.push(`${f.name} exceeds ${MAX_FILE_SIZE_MB}MB limit.`);
+        return;
+      }
+      if (!ALLOWED_TYPES.includes(f.type) && !f.type.startsWith('image/')) {
+        errs.push(`${f.name}: unsupported file type.`);
+        return;
+      }
+      valid.push(f);
+    });
+
+    setFiles((prev) => [...prev, ...valid]);
+    setFileErrors(errs);
+  }
+
+  function removeFile(index: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    handleFiles(e.dataTransfer.files);
+  }
+
+  // -------------------------------------------------------------------------
+  // Validation per step
+  // -------------------------------------------------------------------------
+  function validateStep(s: number): boolean {
+    const errs: Record<string, string> = {};
+    if (s === 1) {
+      if (!subject.trim()) errs.subject = 'Please describe your need.';
+      else if (subject.length > 250) errs.subject = 'Max 250 characters.';
+    }
+    if (s === 2) {
+      if (!system) errs.system = 'Please select a system.';
+      if (!module) errs.module = 'Please select a module.';
+    }
+    if (s === 3) {
+      if (!urgency) errs.urgency = 'Please select urgency.';
+      if (!impact) errs.impact = 'Please select impact.';
+    }
+    if (s === 4) {
+      const text = issueDescription.replace(/<[^>]+>/g, '').trim();
+      if (text.length < 20) errs.issueDescription = 'Description must be at least 20 characters.';
+      else if (text.length > 5000) errs.issueDescription = 'Description must not exceed 5000 characters.';
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  function nextStep() {
+    if (validateStep(step)) setStep((s) => Math.min(s + 1, STEPS.length));
+  }
+
+  function prevStep() {
+    setStep((s) => Math.max(s - 1, 1));
+  }
+
+  // -------------------------------------------------------------------------
+  // Submit
+  // -------------------------------------------------------------------------
+  async function handleSubmit() {
+    if (!validateStep(4)) { setStep(4); return; }
+
+    setSubmitting(true);
+    setSubmitError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('subject', subject);
+      formData.append('system', system);
+      formData.append('systemId', systemId);
+      formData.append('module', module);
+      formData.append('moduleId', moduleId);
+      formData.append('subModule', subModule);
+      formData.append('subModuleId', subModuleId);
+      formData.append('urgency', urgency);
+      formData.append('impact', impact);
+      formData.append('issueDescription', issueDescription);
+      files.forEach((f) => formData.append('attachments', f));
+
+      const res = await fetch('/api/tickets', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setSubmitError(data.error ?? 'Failed to create ticket. Please try again.');
+        return;
+      }
+
+      setSuccessTicket(data.incidentID);
+    } catch {
+      setSubmitError('Network error. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Success screen
+  // -------------------------------------------------------------------------
+  if (successTicket) {
+    return (
+      <div className="max-w-xl mx-auto mt-16 text-center">
+        <div className="rounded-2xl bg-white border border-gray-200 shadow-sm p-10">
+          <CheckCircle2 className="mx-auto h-16 w-16 text-green-500 mb-4" />
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Ticket Created Successfully!</h2>
+          <p className="text-gray-500 mb-4">
+            Your ticket number is{' '}
+            <span className="font-bold text-[#003087] text-lg">{successTicket}</span>
+          </p>
+          <p className="text-sm text-gray-400 mb-6">
+            Our support team will review your request and respond within the SLA timeframe.
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Button variant="outline" onClick={() => router.push('/tickets')}>
+              View My Tickets
+            </Button>
+            <Button onClick={() => router.push('/dashboard')}>Back to Dashboard</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Stepper UI
+  // -------------------------------------------------------------------------
+  return (
+    <div className="max-w-3xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-gray-800">Create Ticket</h1>
+        <p className="text-sm text-gray-500">Submit a new support request</p>
+      </div>
+
+      {/* Step indicator */}
+      <div className="mb-6">
+        <div className="flex items-center gap-0">
+          {STEPS.map((s, i) => (
+            <div key={s.id} className="flex items-center flex-1 last:flex-none">
+              <div className="flex flex-col items-center">
+                <div
+                  className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
+                    s.id < step
+                      ? 'bg-green-500 text-white'
+                      : s.id === step
+                      ? 'bg-[#003087] text-white'
+                      : 'bg-gray-200 text-gray-500'
+                  }`}
+                >
+                  {s.id < step ? <CheckCircle2 className="h-4 w-4" /> : s.id}
+                </div>
+                <span
+                  className={`mt-1 text-xs font-medium hidden sm:block ${
+                    s.id === step ? 'text-[#003087]' : 'text-gray-400'
+                  }`}
+                >
+                  {s.label}
+                </span>
+              </div>
+              {i < STEPS.length - 1 && (
+                <div
+                  className={`h-0.5 flex-1 mx-1 transition-colors ${
+                    s.id < step ? 'bg-green-400' : 'bg-gray-200'
+                  }`}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Card */}
+      <div className="rounded-xl bg-white border border-gray-200 shadow-sm">
+        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 rounded-t-xl">
+          <h2 className="font-semibold text-gray-700">{STEPS[step - 1].label}</h2>
+        </div>
+
+        <div className="p-6 space-y-5">
+          {/* ── Step 1: Issue Scope ── */}
+          {step === 1 && (
+            <div className="space-y-4">
+              <Input
+                label="What best describes your need?"
+                required
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="Brief summary of your issue..."
+                maxLength={250}
+                error={errors.subject}
+                helperText={`${subject.length}/250 characters`}
+              />
+            </div>
+          )}
+
+          {/* ── Step 2: Module Mapping ── */}
+          {step === 2 && (
+            <div className="space-y-4">
+              {loadingSystems ? (
+                <div className="flex justify-center py-8"><Spinner /></div>
+              ) : (
+                <>
+                  <Select
+                    label="System"
+                    required
+                    options={systems.map((s) => ({ value: s.system, label: s.system }))}
+                    value={system}
+                    onChange={(e) => {
+                      setSystem(e.target.value);
+                      const found = systems.find((s) => s.system === e.target.value);
+                      setSystemId(found?.id ?? '');
+                    }}
+                    placeholder="Select System"
+                    error={errors.system}
+                  />
+                  <div className="relative">
+                    <Select
+                      label="Module"
+                      required
+                      options={modules.map((m) => ({ value: m.id, label: m.module }))}
+                      value={moduleId}
+                      onChange={(e) => {
+                        setModuleId(e.target.value);
+                        const found = modules.find((m) => m.id === e.target.value);
+                        setModule(found?.module ?? '');
+                      }}
+                      placeholder={!system ? 'Select a system first' : 'Select Module'}
+                      disabled={!system || loadingModules}
+                      error={errors.module}
+                    />
+                    {loadingModules && (
+                      <Spinner size="sm" className="absolute right-8 top-9" />
+                    )}
+                  </div>
+                  <div className="relative">
+                    <Select
+                      label="Sub Module"
+                      options={subModules.map((sm) => ({ value: sm.id, label: sm.subModule }))}
+                      value={subModuleId}
+                      onChange={(e) => {
+                        setSubModuleId(e.target.value);
+                        const found = subModules.find((sm) => sm.id === e.target.value);
+                        setSubModule(found?.subModule ?? '');
+                      }}
+                      placeholder={!module ? 'Select a module first' : subModules.length === 0 ? 'No submodules available' : 'Select Sub Module'}
+                      disabled={!module || loadingSubModules || subModules.length === 0}
+                    />
+                    {loadingSubModules && (
+                      <Spinner size="sm" className="absolute right-8 top-9" />
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── Step 3: Problem Assessment ── */}
+          {step === 3 && (
+            <div className="space-y-4">
+              <Select
+                label="Urgency"
+                required
+                options={URGENCY_OPTIONS}
+                value={urgency}
+                onChange={(e) => setUrgency(e.target.value)}
+                placeholder="Select Urgency"
+                error={errors.urgency}
+              />
+              <Select
+                label="Impact"
+                required
+                options={URGENCY_OPTIONS}
+                value={impact}
+                onChange={(e) => setImpact(e.target.value)}
+                placeholder="Select Impact"
+                error={errors.impact}
+              />
+
+              {/* Priority + SLA preview */}
+              {slaPreview && (
+                <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 space-y-2">
+                  <p className="text-sm font-medium text-[#003087]">SLA Policy Applied</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-gray-600">
+                    <div>
+                      <p className="font-medium text-gray-500">Priority</p>
+                      <p className="font-bold text-gray-800">{slaPreview.priority}</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-500">Response By</p>
+                      <p className="font-semibold text-gray-800">{slaPreview.respond}</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-500">Resolution By</p>
+                      <p className="font-semibold text-gray-800">{slaPreview.resolve}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Step 4: Issue Details ── */}
+          {step === 4 && (
+            <div className="space-y-5">
+              {/* Rich-text / contentEditable area with paste-image support */}
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-gray-700">
+                  Issue Description <span className="text-red-500">*</span>
+                </label>
+                <div className="text-xs text-gray-400 mb-1">
+                  You can paste text, screenshots, and images directly into the editor below.
+                </div>
+                <div
+                  ref={editorRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={(e) => setIssueDescription((e.target as HTMLDivElement).innerHTML)}
+                  onPaste={(e) => {
+                    // Handle pasted images
+                    const items = Array.from(e.clipboardData?.items ?? []);
+                    const imageItem = items.find((item) => item.type.startsWith('image/'));
+                    if (imageItem) {
+                      const blob = imageItem.getAsFile();
+                      if (blob) {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          const img = document.createElement('img');
+                          img.src = ev.target?.result as string;
+                          img.style.maxWidth = '100%';
+                          document.execCommand('insertHTML', false, img.outerHTML);
+                        };
+                        reader.readAsDataURL(blob);
+                        e.preventDefault();
+                      }
+                    }
+                  }}
+                  className={`min-h-[200px] w-full rounded-md border px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#003087] focus:border-[#003087] ${
+                    errors.issueDescription ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                  style={{ whiteSpace: 'pre-wrap' }}
+                />
+                {errors.issueDescription && (
+                  <p className="text-xs text-red-600">{errors.issueDescription}</p>
+                )}
+              </div>
+
+              {/* Attachments */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Attachments <span className="text-gray-400 font-normal">(Max {MAX_FILES} files, {MAX_FILE_SIZE_MB}MB each)</span>
+                </label>
+
+                <div
+                  className="rounded-lg border-2 border-dashed border-gray-300 p-6 text-center hover:border-[#003087] transition-colors cursor-pointer"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                  <p className="text-sm text-gray-500">
+                    Drag & drop files here, or <span className="text-[#003087] font-medium">browse</span>
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    PNG, JPG, GIF, PDF, DOCX, XLSX, PPTX, ZIP (max {MAX_FILE_SIZE_MB}MB each)
+                  </p>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    accept={ALLOWED_TYPES.join(',')}
+                    onChange={(e) => handleFiles(e.target.files)}
+                  />
+                </div>
+
+                {fileErrors.length > 0 && (
+                  <div className="space-y-1">
+                    {fileErrors.map((e, i) => (
+                      <Alert key={i} message={e} variant="error" />
+                    ))}
+                  </div>
+                )}
+
+                {files.length > 0 && (
+                  <ul className="space-y-2">
+                    {files.map((f, i) => (
+                      <li
+                        key={i}
+                        className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {f.type.startsWith('image/') ? (
+                            <ImageIcon className="h-4 w-4 text-blue-400 flex-shrink-0" />
+                          ) : (
+                            <FileText className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                          )}
+                          <span className="text-sm text-gray-700 truncate">{f.name}</span>
+                          <span className="text-xs text-gray-400 flex-shrink-0">
+                            ({(f.size / 1024 / 1024).toFixed(1)} MB)
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeFile(i)}
+                          className="text-gray-400 hover:text-red-500 flex-shrink-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 5: Review & Submit ── */}
+          {step === 5 && (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">Please review your ticket details before submitting.</p>
+
+              <div className="rounded-lg border border-gray-200 overflow-hidden">
+                <table className="w-full text-sm">
+                  <tbody className="divide-y divide-gray-100">
+                    {[
+                      ['Subject', subject],
+                      ['System', system],
+                      ['Module', module],
+                      ['Sub Module', subModule || '—'],
+                      ['Urgency', urgency],
+                      ['Impact', impact],
+                      ['Priority', priority || urgency],
+                      ['Attachments', files.length > 0 ? `${files.length} file(s)` : 'None'],
+                    ].map(([label, value]) => (
+                      <tr key={label}>
+                        <td className="px-4 py-2.5 text-gray-500 font-medium w-1/3 bg-gray-50">{label}</td>
+                        <td className="px-4 py-2.5 text-gray-800">{value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Issue Description Preview</p>
+                <div
+                  className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 max-h-32 overflow-y-auto"
+                  dangerouslySetInnerHTML={{ __html: issueDescription || '<em>Empty</em>' }}
+                />
+              </div>
+
+              {submitError && <Alert message={submitError} variant="error" />}
+            </div>
+          )}
+        </div>
+
+        {/* Navigation */}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-xl">
+          <Button
+            variant="outline"
+            onClick={step === 1 ? () => void 0 : prevStep}
+            disabled={step === 1}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Back
+          </Button>
+
+          {step < STEPS.length ? (
+            <Button onClick={nextStep}>
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button onClick={handleSubmit} loading={submitting}>
+              Submit Ticket
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

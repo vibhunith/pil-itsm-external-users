@@ -96,8 +96,8 @@ export async function getCategorization(
 // ─── Service ID generation ─────────────────────────────────────────────────
 
 export async function getNextServiceID(): Promise<string> {
-  // Query ITService list (portal writes here) sorted by creation time to get the latest service_ID
-  const res = await graphFetch(listItemsPath(IT_SERVICE_LIST, `?$expand=fields&$orderby=createdDateTime desc&$top=1`));
+  // Query TransactionalRequests sorted by creation time — has full SR history
+  const res = await graphFetch(listItemsPath(SR_LIST, `?$expand=fields&$orderby=createdDateTime desc&$top=1`));
   if (!res.ok) {
     console.error('getNextServiceID fetch failed:', res.status, await res.text());
     return 'SR1';

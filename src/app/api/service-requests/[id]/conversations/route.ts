@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
-import { getSRConversations, addSRConversation, createSRActivityLog } from '@/lib/graph/serviceRequests';
+import { getSRById, getSRConversations, addSRConversation, createSRActivityLog } from '@/lib/graph/serviceRequests';
 
 export async function GET(
   _req: NextRequest,
@@ -10,7 +10,11 @@ export async function GET(
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
-  const conversations = await getSRConversations(id);
+  const sr = await getSRById(id);
+  if (!sr) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  // Use TransactionalRequests item ID (index_ID) as parentID for conversations
+  const conversations = sr.indexId > 0 ? await getSRConversations(String(sr.indexId)) : [];
   return NextResponse.json(conversations);
 }
 
@@ -33,19 +37,22 @@ export async function POST(
   const message = (body.message ?? '').trim();
   if (!message) return NextResponse.json({ error: 'Message is required' }, { status: 400 });
 
+  const sr = await getSRById(id);
+  if (!sr) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
   try {
+    // Use TransactionalRequests item ID (index_ID) as parentID for both conversations and activity logs
     await addSRConversation({
-      parentID: id,
+      parentID: String(sr.indexId),
       message,
       senderEmail: user.email,
       senderDisplayName: user.displayName,
     });
 
     const plainText = message.replace(/<[^>]+>/g, '').trim().slice(0, 500);
-    const numericId = parseInt(id, 10);
-    if (!isNaN(numericId)) {
+    if (sr.indexId > 0) {
       await createSRActivityLog({
-        parentID: numericId,
+        parentID: sr.indexId,
         actor: user.displayName,
         activityDetails: plainText,
       });

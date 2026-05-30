@@ -21,8 +21,7 @@ export default async function ServiceRequestDetailPage({
   if (!sr) notFound();
   if (sr.email && sr.email.toLowerCase() !== user.email.toLowerCase()) notFound();
 
-  const numericId = parseInt(id, 10);
-  const activityLogs = isNaN(numericId) ? [] : await getSRActivityLogs(numericId);
+  const activityLogs = sr.indexId > 0 ? await getSRActivityLogs(sr.indexId) : [];
 
   const infoRows = [
     { label: 'SR Number', value: sr.serviceID },

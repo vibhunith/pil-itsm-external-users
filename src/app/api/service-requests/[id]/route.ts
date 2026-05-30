@@ -16,8 +16,7 @@ export async function GET(
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const numericId = parseInt(id, 10);
-  const activityLogs = isNaN(numericId) ? [] : await getSRActivityLogs(numericId);
+  const activityLogs = sr.indexId > 0 ? await getSRActivityLogs(sr.indexId) : [];
 
   return NextResponse.json({ sr, activityLogs });
 }

@@ -14,6 +14,7 @@ export interface CategorizationItem {
 
 export interface ServiceRequest {
   id: string;
+  indexId: number;   // TransactionalRequests item ID — used as parentID for conversations & activity logs
   serviceID: string;
   serviceType: string;
   system: string;
@@ -95,7 +96,8 @@ export async function getCategorization(
 // ─── Service ID generation ─────────────────────────────────────────────────
 
 export async function getNextServiceID(): Promise<string> {
-  const res = await graphFetch(listItemsPath(SR_LIST, `?$expand=fields&$orderby=createdDateTime desc&$top=1`));
+  // Query ITService list (portal writes here) sorted by creation time to get the latest service_ID
+  const res = await graphFetch(listItemsPath(IT_SERVICE_LIST, `?$expand=fields&$orderby=createdDateTime desc&$top=1`));
   if (!res.ok) {
     console.error('getNextServiceID fetch failed:', res.status, await res.text());
     return 'SR1';
@@ -173,9 +175,9 @@ export async function createServiceRequest(
   const createdIt = await createItRes.json();
   const itServiceItemId: string = createdIt.id;
 
-  // 4. Create initial activity log
+  // 4. Create initial activity log — parentID = TransactionalRequests item ID
   await createSRActivityLog({
-    parentID: parseInt(itServiceItemId, 10),
+    parentID: parseInt(srItemId, 10),
     actor: 'System',
     activityDetails: buildActivityDetails(payload, user, serviceID),
     srSubModule: payload.serviceTypeName,
@@ -191,6 +193,7 @@ function mapITServiceItem(item: { id: string; fields: Record<string, unknown> })
   const f = item.fields;
   return {
     id: item.id,
+    indexId: Number(f.index_ID ?? 0),  // TransactionalRequests item ID
     serviceID: String(f.service_ID ?? ''),
     serviceType: String(f.type_ITService ?? ''),
     system: String(f.notes ?? ''),           // stored in notes on creation

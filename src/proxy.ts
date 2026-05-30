@@ -5,7 +5,7 @@ import { jwtVerify } from 'jose';
 const SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
 const COOKIE_NAME = 'pil_itsm_session';
 
-const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password', '/api/auth'];
+const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/reset-password', '/api/auth'];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

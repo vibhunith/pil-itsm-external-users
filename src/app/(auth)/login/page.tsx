@@ -6,7 +6,7 @@ import Image from 'next/image';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import Alert from '@/components/ui/Alert';
-import { Eye, EyeOff, Lock, User, ShieldCheck, Headphones, Clock } from 'lucide-react';
+import { Eye, EyeOff, Lock, User, ShieldCheck, Headphones, Clock, Loader2 } from 'lucide-react';
 
 const FEATURES = [
   { Icon: Headphones, title: 'Raise Issues', desc: 'Log IT issues and get prompt support from our team.' },
@@ -21,6 +21,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
   const [errors, setErrors] = useState<{ username?: string; password?: string }>({});
 
   function validate(): boolean {
@@ -43,24 +44,42 @@ export default function LoginPage() {
         body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? 'Login failed. Please try again.'); return; }
+      if (!res.ok) {
+        setError(data.error ?? 'Login failed. Please try again.');
+        setLoading(false);
+        return;
+      }
       // Clear any stale ticket state from a previous session
       try {
         Object.keys(localStorage)
           .filter((k) => k.startsWith('pil_ticket_'))
           .forEach((k) => localStorage.removeItem(k));
       } catch { /* ignore */ }
+      // Keep the loader up through the (slow) navigation to the dashboard —
+      // the dashboard server-renders SharePoint data, so this can take a few seconds.
+      setRedirecting(true);
       router.push('/dashboard');
       router.refresh();
     } catch {
       setError('Network error. Please try again.');
-    } finally {
       setLoading(false);
     }
   }
 
   return (
     <div className="min-h-screen flex bg-gray-50">
+      {/* ── Full-screen overlay shown while redirecting to the dashboard ── */}
+      {redirecting && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-white/90 backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2 className="h-10 w-10 animate-spin text-[#003087]" />
+          <p className="text-sm font-medium text-gray-600">Signing you in…</p>
+        </div>
+      )}
+
       {/* ── Left info panel ── */}
       <div className="hidden lg:flex lg:w-[45%] bg-white border-r border-gray-200 flex-col justify-between p-10">
         {/* Logo */}
@@ -175,7 +194,9 @@ export default function LoginPage() {
 
             <p className="mt-6 text-center text-xs text-gray-400">
               Don&apos;t have an account?{' '}
-              <span className="text-gray-500 font-medium">Contact your IT administrator.</span>
+              <Link href="/register" className="text-[#003087] hover:underline font-medium">
+                Request access
+              </Link>
             </p>
           </div>
 

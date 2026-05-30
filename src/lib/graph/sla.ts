@@ -1,9 +1,14 @@
 import { graphFetch, listItemsPath } from './client';
+import { cached } from './cache';
 import type { SLAPolicy } from '@/types/sla';
 
 const SLA_LIST = process.env.SP_LIST_SLA!;
 
+// SLA policy matrix changes rarely — cache for 5 minutes.
+const SLA_TTL = 5 * 60 * 1000;
+
 export async function getSLAPolicies(): Promise<SLAPolicy[]> {
+  return cached('sla:policies', SLA_TTL, async () => {
   const query = `?$expand=fields&$top=200`;
   const res = await graphFetch(listItemsPath(SLA_LIST, query));
   if (!res.ok) throw new Error('Failed to fetch SLA policies');
@@ -24,6 +29,7 @@ export async function getSLAPolicies(): Promise<SLAPolicy[]> {
     isPolicyEnabled:
       item.fields.IsPolicyEnabled === true || item.fields.IsPolicyEnabled === 'True',
   }));
+  });
 }
 
 export async function findMatchingSLAPolicy(

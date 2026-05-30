@@ -1,7 +1,12 @@
 import { graphFetch, listItemsPath } from './client';
-import type { ExternalUser } from '@/types/user';
+import type { ExternalUser, RegisterPayload, CreateUserResult } from '@/types/user';
 
 const LIST = process.env.SP_LIST_USERS!;
+
+// New self-service registrations start Inactive and are routed to this sponsor
+// for approval. A Power Automate flow on the list approves them: sets status to
+// Active and clears the sponsor.
+const SPONSOR_EMAIL = 'vibhor@yoda-tech.com';
 
 // Fetch all users and filter client-side.
 // The username/email columns are not indexed in SharePoint so server-side $filter fails.
@@ -21,6 +26,46 @@ export async function findUserByUsername(username: string): Promise<ExternalUser
 export async function findUserByEmail(email: string): Promise<ExternalUser | null> {
   const users = await getAllUsers();
   return users.find((u) => u.email.toLowerCase() === email.toLowerCase()) ?? null;
+}
+
+// Create a self-service registration: writes a new user with status Inactive
+// and the approval sponsor set. Rejects duplicate username/email.
+export async function createUser(payload: RegisterPayload): Promise<CreateUserResult> {
+  const users = await getAllUsers();
+  const username = payload.username.trim();
+  const email = payload.email.trim();
+
+  if (users.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
+    return { ok: false, code: 'USERNAME_TAKEN', message: 'This username is already taken.' };
+  }
+  if (users.some((u) => u.email.toLowerCase() === email.toLowerCase())) {
+    return { ok: false, code: 'EMAIL_TAKEN', message: 'An account with this email already exists.' };
+  }
+
+  const fields = {
+    Title: username,
+    username,
+    password: payload.password,
+    firstName: payload.firstName.trim(),
+    lastName: payload.lastName.trim(),
+    email,
+    company: payload.company.trim(),
+    status: 'Inactive',
+    sponsor: SPONSOR_EMAIL,
+  };
+
+  const res = await graphFetch(listItemsPath(LIST), {
+    method: 'POST',
+    body: JSON.stringify({ fields }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to create user (${res.status}): ${err}`);
+  }
+
+  const created = await res.json();
+  return { ok: true, id: created.id };
 }
 
 export async function updateUserPassword(userId: string, newPassword: string): Promise<void> {

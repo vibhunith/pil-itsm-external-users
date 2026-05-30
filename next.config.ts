@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Pin the workspace root so Turbopack never infers a parent dir as root
+  // (e.g. when a stray lockfile exists higher up in the filesystem).
+  turbopack: {
+    root: __dirname,
+  },
   // Allow external image domains for SharePoint-hosted images
   images: {
     remotePatterns: [

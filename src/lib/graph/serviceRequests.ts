@@ -1,4 +1,5 @@
 import { graphFetch, listItemsPath, SITE_ID } from './client';
+import { cached } from './cache';
 import type { SessionUser } from '@/types/user';
 
 const CAT_LIST = process.env.SP_LIST_SR_CATEGORIZATION!;
@@ -59,28 +60,30 @@ export interface CreateServiceRequestPayload {
 
 // ─── Categorization ────────────────────────────────────────────────────────
 
+// The categorization list is small reference data driving the cascade
+// (Service Type → System → Category → SubCategory). Fetch it once per TTL
+// window and filter in memory, so each cascade step is a cache hit.
+const CAT_TTL = 5 * 60 * 1000;
+
+function fetchAllCategorization(): Promise<{ id: string; fields: Record<string, unknown> }[]> {
+  return cached('sr:categorization', CAT_TTL, async () => {
+    const res = await graphFetch(listItemsPath(CAT_LIST, `?$expand=fields&$top=2000`));
+    if (!res.ok) {
+      console.error('fetchAllCategorization failed:', res.status, await res.text());
+      return [];
+    }
+    const data = await res.json();
+    const all = (data.value ?? []) as { id: string; fields: Record<string, unknown> }[];
+    console.log(`fetchAllCategorization: cached ${all.length} categorization items`);
+    return all;
+  });
+}
+
 export async function getCategorization(
   masterType: string,
   parentId?: string
 ): Promise<CategorizationItem[]> {
-  const safeType = masterType.replace(/'/g, "''");
-  let filter = `fields/MasterType eq '${safeType}'`;
-  if (parentId) filter += ` and fields/ParentID eq '${parentId.replace(/'/g, "''")}'`;
-
-  let res = await graphFetch(listItemsPath(CAT_LIST, `?$expand=fields&$filter=${encodeURIComponent(filter)}&$top=500`));
-
-  if (!res.ok) {
-    console.warn(`getCategorization filter failed (${res.status}), falling back to full fetch. type=${masterType}`);
-    res = await graphFetch(listItemsPath(CAT_LIST, `?$expand=fields&$top=2000`));
-    if (!res.ok) {
-      console.error('getCategorization full fetch also failed:', await res.text());
-      return [];
-    }
-  }
-
-  const data = await res.json();
-  const all: { id: string; fields: Record<string, unknown> }[] = data.value ?? [];
-  console.log(`getCategorization: fetched ${all.length} items for type=${masterType} parentId=${parentId}`);
+  const all = await fetchAllCategorization();
 
   return all
     .filter((item) => {

@@ -141,6 +141,15 @@ POWER_AUTOMATE_RESET_URL=
 
 ## SharePoint List Schema Notes
 
+### ITSM_ExternalUsers_Registration
+External user accounts. Key columns:
+- `username`, `password` (compared as plain text by login), `firstName`, `lastName`, `email`, `company`
+- `status` (Text): `Active` | `Inactive`. Only `Active` users can sign in.
+- `sponsor` (Text): approver email for self-service registrations. New `/register` submissions set this
+  to `vibhor@yoda-tech.com` and `status = Inactive`; the approval Power Automate flow sets `status = Active`
+  and clears `sponsor`.
+- `resetLink` (Text): one-time password-reset link (set/cleared by the forgot-password flow)
+
 ### ITSM_SR_Categorization
 Hierarchical master for Service Request categorization. Key columns:
 - `MasterType` (Choice): `Service Department` | `Service Type` | `System` | `Category` | `SubCategory`
@@ -187,6 +196,11 @@ Main Service Request records created by this portal. Key columns:
 
 ### Auth
 - Email + password login against `ITSM_ExternalUsers_Registration` SharePoint list
+- **Self-service registration** (`/register`, "Request access" on the login page): new users submit
+  first name, last name, email, company, username and password. The record is created in
+  `ITSM_ExternalUsers_Registration` with `status = Inactive` and `sponsor = vibhor@yoda-tech.com`.
+  A Power Automate flow routes an approval to the sponsor; on approval it sets `status = Active`
+  and clears `sponsor`, after which the user can sign in. Login blocks any non-`Active` account.
 - Forgot password / reset password via Power Automate flow
 - JWT session stored in HTTP-only cookie
 

@@ -1,4 +1,5 @@
 import { graphFetch, listItemsPath } from './client';
+import { hashPassword } from '@/lib/auth/password';
 import type { ExternalUser, RegisterPayload, CreateUserResult } from '@/types/user';
 
 const LIST = process.env.SP_LIST_USERS!;
@@ -45,7 +46,7 @@ export async function createUser(payload: RegisterPayload): Promise<CreateUserRe
   const fields = {
     Title: username,
     username,
-    password: payload.password,
+    password: await hashPassword(payload.password),
     firstName: payload.firstName.trim(),
     lastName: payload.lastName.trim(),
     email,
@@ -73,7 +74,7 @@ export async function updateUserPassword(userId: string, newPassword: string): P
     `/sites/${process.env.SHAREPOINT_SITE_ID}/lists/${LIST}/items/${userId}/fields`,
     {
       method: 'PATCH',
-      body: JSON.stringify({ password: newPassword }),
+      body: JSON.stringify({ password: await hashPassword(newPassword) }),
     }
   );
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findUserByUsername } from '@/lib/graph/auth';
+import { findUserByUsername, updateUserPassword } from '@/lib/graph/auth';
 import { createSession } from '@/lib/auth/session';
+import { verifyPassword, isHashed } from '@/lib/auth/password';
 import type { SessionUser } from '@/types/user';
 
 const COOKIE_NAME = 'pil_itsm_session';
@@ -33,12 +34,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Direct comparison — passwords are managed by PowerApps admin tool in SharePoint
-    if (user.password !== password) {
+    // Verify against the stored bcrypt hash (or legacy plain text for old accounts).
+    const passwordOk = await verifyPassword(password, user.password);
+    if (!passwordOk) {
       return NextResponse.json(
         { error: 'Invalid username or password.' },
         { status: 401 }
       );
+    }
+
+    // Transparently migrate legacy plain-text passwords to a bcrypt hash on
+    // successful login. Best-effort — never block sign-in if the re-hash fails.
+    if (!isHashed(user.password)) {
+      try {
+        await updateUserPassword(user.id, password);
+      } catch (err) {
+        console.error('Password re-hash on login failed (non-fatal):', err);
+      }
     }
 
     const sessionUser: SessionUser = {

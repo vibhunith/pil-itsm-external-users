@@ -96,16 +96,22 @@ export async function getCategorization(
 // ─── Service ID generation ─────────────────────────────────────────────────
 
 export async function getNextServiceID(): Promise<string> {
-  // Query TransactionalRequests sorted by creation time — has full SR history
-  const res = await graphFetch(listItemsPath(SR_LIST, `?$expand=fields&$orderby=createdDateTime desc&$top=1`));
+  // Fetch all TransactionalRequests, find the max numeric service_ID client-side, increment by 1.
+  // Avoids relying on server-side sort which was returning stale legacy records.
+  const res = await graphFetch(listItemsPath(SR_LIST, `?$expand=fields&$top=5000`));
   if (!res.ok) {
     console.error('getNextServiceID fetch failed:', res.status, await res.text());
     return 'SR1';
   }
   const data = await res.json();
-  const raw: string = data.value?.[0]?.fields?.service_ID ?? '';
-  const num = parseInt(raw.replace(/[^0-9]/g, ''), 10);
-  return `SR${isNaN(num) ? 1 : num + 1}`;
+  const items: { fields: Record<string, unknown> }[] = data.value ?? [];
+  let max = 0;
+  for (const item of items) {
+    const raw = String(item.fields?.service_ID ?? '');
+    const num = parseInt(raw.replace(/[^0-9]/g, ''), 10);
+    if (!isNaN(num) && num > max) max = num;
+  }
+  return `SR${max + 1}`;
 }
 
 // ─── Create service request ────────────────────────────────────────────────

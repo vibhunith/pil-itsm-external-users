@@ -1,36 +1,221 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PIL ITSM External Portal
+
+A Next.js portal for external users to raise and track IT service requests and incident tickets against a SharePoint-backed ITSM system.
+
+---
+
+## Tech Stack
+
+- **Framework**: Next.js (App Router)
+- **Auth**: Custom JWT session via Azure AD / Microsoft Graph
+- **Backend**: Microsoft Graph API → SharePoint Online lists
+- **Styling**: Tailwind CSS
+
+---
 
 ## Getting Started
 
-First, run the development server:
+### 1. Install dependencies
+
+```bash
+npm install
+```
+
+### 2. Configure environment variables
+
+Copy `.env.local.example` to `.env.local` and fill in all values (see below).
+
+```bash
+cp .env.local.example .env.local
+```
+
+### 3. Run the development server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment Variables
 
-## Learn More
+Create a `.env.local` file in the project root with the following variables:
 
-To learn more about Next.js, take a look at the following resources:
+### Azure AD (Microsoft Graph)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Variable | Description |
+|---|---|
+| `AZURE_TENANT_ID` | Azure AD tenant ID |
+| `AZURE_CLIENT_ID` | App registration client ID |
+| `AZURE_CLIENT_SECRET` | App registration client secret |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The Azure AD app registration requires the following **Microsoft Graph API** permissions (Application):
+- `Sites.ReadWrite.All` — read/write SharePoint list items via Graph API
+- `Mail.Send` — send notification emails (if applicable)
 
-## Deploy on Vercel
+> For SharePoint REST API attachment uploads, the app also needs **SharePoint API** permission: `Sites.ReadWrite.All` (under SharePoint, not Graph).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### SharePoint
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Variable | Description |
+|---|---|
+| `SHAREPOINT_SITE_ID` | Full SharePoint site ID in the format `tenant.sharepoint.com,siteCollectionId,webId` |
+
+### Session
+
+| Variable | Description |
+|---|---|
+| `JWT_SECRET` | Secret key used to sign JWT session tokens. Use a long random string in production. |
+
+### App
+
+| Variable | Description |
+|---|---|
+| `NEXT_PUBLIC_APP_URL` | Public base URL of the app (e.g. `http://localhost:3000` or `https://yourdomain.com`) |
+| `NOTIFICATION_EMAIL` | Email address used as sender/recipient for system notifications |
+| `POWER_AUTOMATE_RESET_URL` | Power Automate HTTP trigger URL for password reset flow (leave blank to disable) |
+
+### SharePoint List Names — Incident Requests
+
+| Variable | SharePoint List Name |
+|---|---|
+| `SP_LIST_USERS` | `ITSM_ExternalUsers_Registration` |
+| `SP_LIST_SYSTEMS` | `ITSM_SystemConfigurationMaster` |
+| `SP_LIST_MODULES` | `ITSM_ModuleConfigurationMaster` |
+| `SP_LIST_SUBMODULES` | `ITSM_SubModuleConfigurationMaster` |
+| `SP_LIST_SLA` | `ITSM_IR_SLA` |
+| `SP_LIST_TICKETS` | `ITSM_IR_TransactionalRequests` |
+| `SP_LIST_ACTIVITY_LOGS` | `ITSM_IR_ActivityLogs` |
+| `SP_LIST_CONVERSATIONS` | `ITSM_IR_TicketConversation` |
+
+### SharePoint List Names — Service Requests
+
+| Variable | SharePoint List Name |
+|---|---|
+| `SP_LIST_SR_CATEGORIZATION` | `ITSM_SR_Categorization` |
+| `SP_LIST_SR_REQUESTS` | `ITSM_SR_TransactionalRequests` |
+| `SP_LIST_SR_ITSERVICE` | `ITSM_SR_ITService` |
+| `SP_LIST_SR_ACTIVITY_LOGS` | `ITSM_SR_ITService_ActivityLogs` |
+| `SP_LIST_SR_CONVERSATIONS` | `ITSM_SR_ITService_TicketConversation` |
+
+### Complete `.env.local` Example
+
+```env
+# Azure AD / Microsoft Graph
+AZURE_TENANT_ID=your-tenant-id
+AZURE_CLIENT_ID=your-client-id
+AZURE_CLIENT_SECRET=your-client-secret
+
+# SharePoint
+SHAREPOINT_SITE_ID=tenant.sharepoint.com,site-collection-id,web-id
+
+# SharePoint List Names — Incident Requests
+SP_LIST_USERS=ITSM_ExternalUsers_Registration
+SP_LIST_SYSTEMS=ITSM_SystemConfigurationMaster
+SP_LIST_MODULES=ITSM_ModuleConfigurationMaster
+SP_LIST_SUBMODULES=ITSM_SubModuleConfigurationMaster
+SP_LIST_SLA=ITSM_IR_SLA
+SP_LIST_TICKETS=ITSM_IR_TransactionalRequests
+SP_LIST_ACTIVITY_LOGS=ITSM_IR_ActivityLogs
+SP_LIST_CONVERSATIONS=ITSM_IR_TicketConversation
+
+# SharePoint List Names — Service Requests
+SP_LIST_SR_CATEGORIZATION=ITSM_SR_Categorization
+SP_LIST_SR_REQUESTS=ITSM_SR_TransactionalRequests
+SP_LIST_SR_ITSERVICE=ITSM_SR_ITService
+SP_LIST_SR_ACTIVITY_LOGS=ITSM_SR_ITService_ActivityLogs
+SP_LIST_SR_CONVERSATIONS=ITSM_SR_ITService_TicketConversation
+
+# JWT
+JWT_SECRET=your-long-random-secret-key
+
+# App
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+NOTIFICATION_EMAIL=notifications@yourdomain.com
+POWER_AUTOMATE_RESET_URL=
+```
+
+---
+
+## SharePoint List Schema Notes
+
+### ITSM_SR_Categorization
+Hierarchical master for Service Request categorization. Key columns:
+- `MasterType` (Choice): `Service Department` | `Service Type` | `System` | `Category` | `SubCategory`
+- `ParentID` (Text): SharePoint item ID of the parent record
+- `Title`: Display name of the item
+
+### ITSM_SR_ITService
+Main Service Request records created by this portal. Key columns:
+- `service_ID`: SR number (e.g. SR1563)
+- `index_ID` (Number): SharePoint item ID of the linked TransactionalRequests record — used as `parentID` for conversations and activity logs
+- `externalUserEmail`: Email of the requesting user
+- `externalUserDisplayName`: Display name of the requesting user
+- `type_ITService`: Service type (IT Service / Cloud Service Request / Central Data Platform)
+- `status`: Open | In Progress | Resolved | Closed | Rejected
+- `urgency`: Critical | High | Medium | Low
+- `scopeOfRequest`: Scope/description of the request
+- `notes`: System name (stored here for display)
+
+### ITSM_SR_ITService_ActivityLogs
+- `parentID` (Number): Must be the `index_ID` from ITService (= TransactionalRequests item ID)
+- `actor`: User display name or "System"
+- `activityDetails`: Log message text
+
+### ITSM_SR_ITService_TicketConversation
+- `parentID` (Text): String of the TransactionalRequests item ID (same value as `index_ID` in ITService)
+- `conversationDescription`: Message content
+- `emailFromMembers`: Sender email
+
+---
+
+## Features
+
+### Incident Requests
+- View all submitted tickets with filtering, sorting, and column reordering
+- Create tickets with system/module/submodule selection, file attachments
+- Ticket detail: SLA deadlines, attachments, conversation thread, activity timeline
+- Reopen closed/resolved/rejected tickets
+
+### Service Requests
+- 5-step creation wizard: Service Type → Categorization → Request Details → Additional Details → Review & Submit
+- Cascading dropdowns: System → Category → Sub Category (loaded from `ITSM_SR_Categorization`)
+- Service types hardcoded to: IT Service, Cloud Service Request, Central Data Platform
+- SR detail: conversation thread + activity timeline
+
+### Auth
+- Email + password login against `ITSM_ExternalUsers_Registration` SharePoint list
+- Forgot password / reset password via Power Automate flow
+- JWT session stored in HTTP-only cookie
+
+---
+
+## Project Structure
+
+```
+src/
+  app/
+    (auth)/          # Login, forgot-password, reset-password pages
+    (portal)/        # Authenticated portal pages
+      dashboard/
+      tickets/       # Incident request list + create + detail
+      service-requests/  # SR list + create + detail
+    api/
+      auth/          # Login, logout, forgot-password, reset-password
+      tickets/       # Incident CRUD + conversations
+      service-requests/  # SR CRUD + conversations
+  components/
+    layout/          # Header, Sidebar
+    tickets/         # TicketTable, ConversationSection, ActivityTimelineSection, ReopenTicketButton
+    ui/              # Button, Input, Select, Badge, Alert, Spinner
+  lib/
+    auth/            # Session management (JWT)
+    graph/           # Microsoft Graph API clients
+      client.ts      # Base graphFetch helper
+      tickets.ts     # Incident request data layer
+      serviceRequests.ts  # Service request data layer
+      masters.ts     # System/module master lookups (cached)
+      auth.ts        # User auth against SharePoint
+```

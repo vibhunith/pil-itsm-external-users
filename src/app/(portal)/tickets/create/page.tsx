@@ -9,9 +9,6 @@ import Spinner from '@/components/ui/Spinner';
 import { CheckCircle2, Upload, X, FileText, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { SystemItem, ModuleItem, SubModuleItem } from '@/types/master';
 
-// ---------------------------------------------------------------------------
-// Step definitions
-// ---------------------------------------------------------------------------
 const STEPS = [
   { id: 1, label: 'Issue Scope' },
   { id: 2, label: 'Module Mapping' },
@@ -38,9 +35,6 @@ const ALLOWED_TYPES = [
   'application/zip',
 ];
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
 export default function CreateTicketPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
@@ -48,7 +42,6 @@ export default function CreateTicketPage() {
   const [submitError, setSubmitError] = useState('');
   const [successTicket, setSuccessTicket] = useState('');
 
-  // Form state
   const [subject, setSubject] = useState('');
   const [system, setSystem] = useState('');
   const [systemId, setSystemId] = useState('');
@@ -63,24 +56,18 @@ export default function CreateTicketPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [fileErrors, setFileErrors] = useState<string[]>([]);
 
-  // Masters
   const [systems, setSystems] = useState<SystemItem[]>([]);
   const [modules, setModules] = useState<ModuleItem[]>([]);
   const [subModules, setSubModules] = useState<SubModuleItem[]>([]);
   const [loadingSystems, setLoadingSystems] = useState(true);
   const [loadingModules, setLoadingModules] = useState(false);
   const [loadingSubModules, setLoadingSubModules] = useState(false);
-
-  // SLA preview
   const [slaPreview, setSlaPreview] = useState<{ priority: string; respond: string; resolve: string } | null>(null);
-
-  // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load systems on mount
   useEffect(() => {
     fetch('/api/masters/systems')
       .then((r) => r.json())
@@ -89,10 +76,8 @@ export default function CreateTicketPage() {
       .finally(() => setLoadingSystems(false));
   }, []);
 
-  // Load modules when system changes
   useEffect(() => {
     if (!system) { setModules([]); setModule(''); setModuleId(''); setSubModule(''); setSubModuleId(''); return; }
-    // Derive systemId from systems list directly (avoid stale state)
     const found = systems.find((s) => s.system === system);
     const sid = found?.id ?? systemId;
     if (!sid) return;
@@ -105,7 +90,6 @@ export default function CreateTicketPage() {
       .finally(() => setLoadingModules(false));
   }, [system, systems]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load submodules when module changes
   useEffect(() => {
     if (!moduleId) { setSubModules([]); setSubModule(''); setSubModuleId(''); return; }
     setLoadingSubModules(true);
@@ -117,7 +101,6 @@ export default function CreateTicketPage() {
       .finally(() => setLoadingSubModules(false));
   }, [moduleId]);
 
-  // Fetch SLA preview when urgency + impact selected
   const fetchSLA = useCallback(async () => {
     if (!urgency || !impact) { setSlaPreview(null); return; }
     try {
@@ -127,64 +110,32 @@ export default function CreateTicketPage() {
         setPriority(data.policy.priority);
         setSlaPreview({
           priority: data.policy.priority,
-          respond: data.sla?.initialResponseClockSLA
-            ? new Date(data.sla.initialResponseClockSLA).toLocaleString()
-            : '—',
-          resolve: data.sla?.initialResolutionClockSLA
-            ? new Date(data.sla.initialResolutionClockSLA).toLocaleString()
-            : '—',
+          respond: data.sla?.initialResponseClockSLA ? new Date(data.sla.initialResponseClockSLA).toLocaleString() : '—',
+          resolve: data.sla?.initialResolutionClockSLA ? new Date(data.sla.initialResolutionClockSLA).toLocaleString() : '—',
         });
       } else {
-        setPriority(urgency); // fallback
+        setPriority(urgency);
         setSlaPreview(null);
       }
-    } catch {
-      setSlaPreview(null);
-    }
+    } catch { setSlaPreview(null); }
   }, [urgency, impact]);
 
   useEffect(() => { fetchSLA(); }, [fetchSLA]);
 
-  // -------------------------------------------------------------------------
-  // File handling
-  // -------------------------------------------------------------------------
   function handleFiles(incoming: FileList | null) {
     if (!incoming) return;
     const errs: string[] = [];
     const valid: File[] = [];
-
     Array.from(incoming).forEach((f) => {
-      if (files.length + valid.length >= MAX_FILES) {
-        errs.push(`Max ${MAX_FILES} files allowed.`);
-        return;
-      }
-      if (f.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-        errs.push(`${f.name} exceeds ${MAX_FILE_SIZE_MB}MB limit.`);
-        return;
-      }
-      if (!ALLOWED_TYPES.includes(f.type) && !f.type.startsWith('image/')) {
-        errs.push(`${f.name}: unsupported file type.`);
-        return;
-      }
+      if (files.length + valid.length >= MAX_FILES) { errs.push(`Max ${MAX_FILES} files allowed.`); return; }
+      if (f.size > MAX_FILE_SIZE_MB * 1024 * 1024) { errs.push(`${f.name} exceeds ${MAX_FILE_SIZE_MB}MB limit.`); return; }
+      if (!ALLOWED_TYPES.includes(f.type) && !f.type.startsWith('image/')) { errs.push(`${f.name}: unsupported file type.`); return; }
       valid.push(f);
     });
-
     setFiles((prev) => [...prev, ...valid]);
     setFileErrors(errs);
   }
 
-  function removeFile(index: number) {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    handleFiles(e.dataTransfer.files);
-  }
-
-  // -------------------------------------------------------------------------
-  // Validation per step
-  // -------------------------------------------------------------------------
   function validateStep(s: number): boolean {
     const errs: Record<string, string> = {};
     if (s === 1) {
@@ -216,15 +167,10 @@ export default function CreateTicketPage() {
     setStep((s) => Math.max(s - 1, 1));
   }
 
-  // -------------------------------------------------------------------------
-  // Submit
-  // -------------------------------------------------------------------------
   async function handleSubmit() {
     if (!validateStep(4)) { setStep(4); return; }
-
     setSubmitting(true);
     setSubmitError('');
-
     try {
       const formData = new FormData();
       formData.append('subject', subject);
@@ -238,15 +184,9 @@ export default function CreateTicketPage() {
       formData.append('impact', impact);
       formData.append('issueDescription', issueDescription);
       files.forEach((f) => formData.append('attachments', f));
-
       const res = await fetch('/api/tickets', { method: 'POST', body: formData });
       const data = await res.json();
-
-      if (!res.ok) {
-        setSubmitError(data.error ?? 'Failed to create ticket. Please try again.');
-        return;
-      }
-
+      if (!res.ok) { setSubmitError(data.error ?? 'Failed to create ticket. Please try again.'); return; }
       setSuccessTicket(data.incidentID);
     } catch {
       setSubmitError('Network error. Please try again.');
@@ -255,46 +195,40 @@ export default function CreateTicketPage() {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Success screen
-  // -------------------------------------------------------------------------
+  // ── Success screen ──
   if (successTicket) {
     return (
       <div className="max-w-xl mx-auto mt-16 text-center">
         <div className="rounded-2xl bg-white border border-gray-200 shadow-sm p-10">
-          <CheckCircle2 className="mx-auto h-16 w-16 text-green-500 mb-4" />
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Ticket Created Successfully!</h2>
-          <p className="text-gray-500 mb-4">
-            Your ticket number is{' '}
-            <span className="font-bold text-[#003087] text-lg">{successTicket}</span>
-          </p>
-          <p className="text-sm text-gray-400 mb-6">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 mx-auto mb-4">
+            <CheckCircle2 className="h-9 w-9 text-green-600" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-800 mb-2">Ticket Created Successfully!</h2>
+          <p className="text-gray-500 mb-1 text-sm">Your ticket number is</p>
+          <p className="font-bold text-[#003087] text-2xl mb-4">{successTicket}</p>
+          <p className="text-sm text-gray-400 mb-7">
             Our support team will review your request and respond within the SLA timeframe.
           </p>
           <div className="flex gap-3 justify-center">
-            <Button variant="outline" onClick={() => router.push('/tickets')}>
-              View My Tickets
-            </Button>
-            <Button onClick={() => router.push('/dashboard')}>Back to Dashboard</Button>
+            <Button variant="outline" onClick={() => router.push('/tickets')}>View My Tickets</Button>
+            <Button onClick={() => router.push('/dashboard')}>Back to Home</Button>
           </div>
         </div>
       </div>
     );
   }
 
-  // -------------------------------------------------------------------------
-  // Stepper UI
-  // -------------------------------------------------------------------------
+  // ── Stepper UI ──
   return (
     <div className="max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-800">Create Ticket</h1>
-        <p className="text-sm text-gray-500">Submit a new support request</p>
+        <h1 className="text-xl font-bold text-gray-800">Raise an Issue</h1>
+        <p className="text-sm text-gray-500">Submit a new IT support request</p>
       </div>
 
       {/* Step indicator */}
       <div className="mb-6">
-        <div className="flex items-center gap-0">
+        <div className="flex items-center">
           {STEPS.map((s, i) => (
             <div key={s.id} className="flex items-center flex-1 last:flex-none">
               <div className="flex flex-col items-center">
@@ -304,25 +238,19 @@ export default function CreateTicketPage() {
                       ? 'bg-green-500 text-white'
                       : s.id === step
                       ? 'bg-[#003087] text-white'
-                      : 'bg-gray-200 text-gray-500'
+                      : 'bg-gray-100 text-gray-400 border border-gray-200'
                   }`}
                 >
                   {s.id < step ? <CheckCircle2 className="h-4 w-4" /> : s.id}
                 </div>
-                <span
-                  className={`mt-1 text-xs font-medium hidden sm:block ${
-                    s.id === step ? 'text-[#003087]' : 'text-gray-400'
-                  }`}
-                >
+                <span className={`mt-1.5 text-[10px] font-medium hidden sm:block ${
+                  s.id === step ? 'text-[#003087]' : s.id < step ? 'text-green-600' : 'text-gray-400'
+                }`}>
                   {s.label}
                 </span>
               </div>
               {i < STEPS.length - 1 && (
-                <div
-                  className={`h-0.5 flex-1 mx-1 transition-colors ${
-                    s.id < step ? 'bg-green-400' : 'bg-gray-200'
-                  }`}
-                />
+                <div className={`h-0.5 flex-1 mx-2 transition-colors ${s.id < step ? 'bg-green-400' : 'bg-gray-200'}`} />
               )}
             </div>
           ))}
@@ -332,11 +260,12 @@ export default function CreateTicketPage() {
       {/* Card */}
       <div className="rounded-xl bg-white border border-gray-200 shadow-sm">
         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 rounded-t-xl">
-          <h2 className="font-semibold text-gray-700">{STEPS[step - 1].label}</h2>
+          <h2 className="font-semibold text-gray-700 text-sm">{STEPS[step - 1].label}</h2>
         </div>
 
         <div className="p-6 space-y-5">
-          {/* ── Step 1: Issue Scope ── */}
+
+          {/* Step 1 */}
           {step === 1 && (
             <div className="space-y-4">
               <Input
@@ -344,7 +273,7 @@ export default function CreateTicketPage() {
                 required
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                placeholder="Brief summary of your issue..."
+                placeholder="e.g. Unable to access SAP — login fails with error code 403"
                 maxLength={250}
                 error={errors.subject}
                 helperText={`${subject.length}/250 characters`}
@@ -352,7 +281,7 @@ export default function CreateTicketPage() {
             </div>
           )}
 
-          {/* ── Step 2: Module Mapping ── */}
+          {/* Step 2 */}
           {step === 2 && (
             <div className="space-y-4">
               {loadingSystems ? (
@@ -387,9 +316,7 @@ export default function CreateTicketPage() {
                       disabled={!system || loadingModules}
                       error={errors.module}
                     />
-                    {loadingModules && (
-                      <Spinner size="sm" className="absolute right-8 top-9" />
-                    )}
+                    {loadingModules && <Spinner size="sm" className="absolute right-8 top-9" />}
                   </div>
                   <div className="relative">
                     <Select
@@ -404,16 +331,14 @@ export default function CreateTicketPage() {
                       placeholder={!module ? 'Select a module first' : subModules.length === 0 ? 'No submodules available' : 'Select Sub Module'}
                       disabled={!module || loadingSubModules || subModules.length === 0}
                     />
-                    {loadingSubModules && (
-                      <Spinner size="sm" className="absolute right-8 top-9" />
-                    )}
+                    {loadingSubModules && <Spinner size="sm" className="absolute right-8 top-9" />}
                   </div>
                 </>
               )}
             </div>
           )}
 
-          {/* ── Step 3: Problem Assessment ── */}
+          {/* Step 3 */}
           {step === 3 && (
             <div className="space-y-4">
               <Select
@@ -434,11 +359,9 @@ export default function CreateTicketPage() {
                 placeholder="Select Impact"
                 error={errors.impact}
               />
-
-              {/* Priority + SLA preview */}
               {slaPreview && (
                 <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 space-y-2">
-                  <p className="text-sm font-medium text-[#003087]">SLA Policy Applied</p>
+                  <p className="text-sm font-semibold text-[#003087]">SLA Policy Applied</p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-gray-600">
                     <div>
                       <p className="font-medium text-gray-500">Priority</p>
@@ -458,24 +381,20 @@ export default function CreateTicketPage() {
             </div>
           )}
 
-          {/* ── Step 4: Issue Details ── */}
+          {/* Step 4 */}
           {step === 4 && (
             <div className="space-y-5">
-              {/* Rich-text / contentEditable area with paste-image support */}
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-medium text-gray-700">
                   Issue Description <span className="text-red-500">*</span>
                 </label>
-                <div className="text-xs text-gray-400 mb-1">
-                  You can paste text, screenshots, and images directly into the editor below.
-                </div>
+                <p className="text-xs text-gray-400 mb-1">You can paste text, screenshots, and images directly into the editor below.</p>
                 <div
                   ref={editorRef}
                   contentEditable
                   suppressContentEditableWarning
                   onInput={(e) => setIssueDescription((e.target as HTMLDivElement).innerHTML)}
                   onPaste={(e) => {
-                    // Handle pasted images
                     const items = Array.from(e.clipboardData?.items ?? []);
                     const imageItem = items.find((item) => item.type.startsWith('image/'));
                     if (imageItem) {
@@ -493,76 +412,46 @@ export default function CreateTicketPage() {
                       }
                     }
                   }}
-                  className={`min-h-[200px] w-full rounded-md border px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#003087] focus:border-[#003087] ${
-                    errors.issueDescription ? 'border-red-500' : 'border-gray-300'
+                  className={`min-h-[200px] w-full rounded-md border px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] ${
+                    errors.issueDescription ? 'border-red-400' : 'border-gray-300'
                   }`}
                   style={{ whiteSpace: 'pre-wrap' }}
                 />
-                {errors.issueDescription && (
-                  <p className="text-xs text-red-600">{errors.issueDescription}</p>
-                )}
+                {errors.issueDescription && <p className="text-xs text-red-600">{errors.issueDescription}</p>}
               </div>
 
-              {/* Attachments */}
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium text-gray-700">
                   Attachments <span className="text-gray-400 font-normal">(Max {MAX_FILES} files, {MAX_FILE_SIZE_MB}MB each)</span>
                 </label>
-
                 <div
-                  className="rounded-lg border-2 border-dashed border-gray-300 p-6 text-center hover:border-[#003087] transition-colors cursor-pointer"
+                  className="rounded-lg border-2 border-dashed border-gray-200 p-6 text-center hover:border-[#003087] transition-colors cursor-pointer bg-gray-50"
                   onDragOver={(e) => e.preventDefault()}
-                  onDrop={handleDrop}
+                  onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <Upload className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                  <Upload className="mx-auto h-8 w-8 text-gray-300 mb-2" />
                   <p className="text-sm text-gray-500">
                     Drag & drop files here, or <span className="text-[#003087] font-medium">browse</span>
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    PNG, JPG, GIF, PDF, DOCX, XLSX, PPTX, ZIP (max {MAX_FILE_SIZE_MB}MB each)
-                  </p>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    accept={ALLOWED_TYPES.join(',')}
-                    onChange={(e) => handleFiles(e.target.files)}
-                  />
+                  <p className="text-xs text-gray-400 mt-1">PNG, JPG, GIF, PDF, DOCX, XLSX, PPTX, ZIP (max {MAX_FILE_SIZE_MB}MB each)</p>
+                  <input ref={fileInputRef} type="file" multiple className="hidden" accept={ALLOWED_TYPES.join(',')} onChange={(e) => handleFiles(e.target.files)} />
                 </div>
-
                 {fileErrors.length > 0 && (
                   <div className="space-y-1">
-                    {fileErrors.map((e, i) => (
-                      <Alert key={i} message={e} variant="error" />
-                    ))}
+                    {fileErrors.map((e, i) => <Alert key={i} message={e} variant="error" />)}
                   </div>
                 )}
-
                 {files.length > 0 && (
                   <ul className="space-y-2">
                     {files.map((f, i) => (
-                      <li
-                        key={i}
-                        className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2"
-                      >
+                      <li key={i} className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
                         <div className="flex items-center gap-2 min-w-0">
-                          {f.type.startsWith('image/') ? (
-                            <ImageIcon className="h-4 w-4 text-blue-400 flex-shrink-0" />
-                          ) : (
-                            <FileText className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                          )}
+                          {f.type.startsWith('image/') ? <ImageIcon className="h-4 w-4 text-blue-400 flex-shrink-0" /> : <FileText className="h-4 w-4 text-gray-400 flex-shrink-0" />}
                           <span className="text-sm text-gray-700 truncate">{f.name}</span>
-                          <span className="text-xs text-gray-400 flex-shrink-0">
-                            ({(f.size / 1024 / 1024).toFixed(1)} MB)
-                          </span>
+                          <span className="text-xs text-gray-400 flex-shrink-0">({(f.size / 1024 / 1024).toFixed(1)} MB)</span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => removeFile(i)}
-                          className="text-gray-400 hover:text-red-500 flex-shrink-0"
-                        >
+                        <button type="button" onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500 flex-shrink-0">
                           <X className="h-4 w-4" />
                         </button>
                       </li>
@@ -573,11 +462,10 @@ export default function CreateTicketPage() {
             </div>
           )}
 
-          {/* ── Step 5: Review & Submit ── */}
+          {/* Step 5 — Review */}
           {step === 5 && (
             <div className="space-y-4">
-              <p className="text-sm text-gray-600">Please review your ticket details before submitting.</p>
-
+              <p className="text-sm text-gray-500">Please review your ticket details before submitting.</p>
               <div className="rounded-lg border border-gray-200 overflow-hidden">
                 <table className="w-full text-sm">
                   <tbody className="divide-y divide-gray-100">
@@ -599,7 +487,6 @@ export default function CreateTicketPage() {
                   </tbody>
                 </table>
               </div>
-
               <div>
                 <p className="text-xs font-medium text-gray-500 mb-1">Issue Description Preview</p>
                 <div
@@ -607,7 +494,6 @@ export default function CreateTicketPage() {
                   dangerouslySetInnerHTML={{ __html: issueDescription || '<em>Empty</em>' }}
                 />
               </div>
-
               {submitError && <Alert message={submitError} variant="error" />}
             </div>
           )}

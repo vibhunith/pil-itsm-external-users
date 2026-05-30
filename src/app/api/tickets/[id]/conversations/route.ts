@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { getTicketOwner } from '@/lib/graph/tickets';
 import { getConversationsByTicket, addConversation } from '@/lib/graph/conversations';
+import { createActivityLog } from '@/lib/graph/activityLogs';
 
 export async function GET(
   _req: NextRequest,
@@ -54,6 +55,17 @@ export async function POST(
       senderEmail: user.email,
       senderDisplayName: user.displayName,
     });
+
+    // Log conversation to activity timeline
+    if (!isNaN(numericId)) {
+      // Strip HTML tags for the activity log preview
+      const plainText = message.trim().replace(/<[^>]+>/g, '').slice(0, 500);
+      await createActivityLog({
+        parentID: numericId,
+        actor: user.displayName,
+        activityDetails: plainText + (message.trim().replace(/<[^>]+>/g, '').length > 500 ? '…' : ''),
+      });
+    }
 
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (err) {

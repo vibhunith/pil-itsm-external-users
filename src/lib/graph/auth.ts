@@ -37,6 +37,39 @@ export async function updateUserPassword(userId: string, newPassword: string): P
   }
 }
 
+export async function storeResetLink(userId: string, resetLink: string): Promise<void> {
+  const res = await graphFetch(
+    `/sites/${process.env.SHAREPOINT_SITE_ID}/lists/${LIST}/items/${userId}/fields`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ resetLink }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to store reset link (${res.status}): ${err}`);
+  }
+}
+
+export async function clearResetLink(userId: string): Promise<void> {
+  await graphFetch(
+    `/sites/${process.env.SHAREPOINT_SITE_ID}/lists/${LIST}/items/${userId}/fields`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ resetLink: '' }),
+    }
+  );
+}
+
+export async function getStoredResetLink(userId: string): Promise<string> {
+  const res = await graphFetch(
+    `/sites/${process.env.SHAREPOINT_SITE_ID}/lists/${LIST}/items/${userId}?$expand=fields($select=resetLink)`
+  );
+  if (!res.ok) return '';
+  const data = await res.json();
+  return String(data.fields?.resetLink ?? '');
+}
+
 function mapToUser(item: { id: string; fields: Record<string, string> }): ExternalUser {
   const f = item.fields;
   return {

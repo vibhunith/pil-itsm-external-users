@@ -39,56 +39,55 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#003087] via-[#004BB4] to-[#0066CC] flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-          <div className="bg-[#003087] px-8 py-6 text-center">
-            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-xl bg-white text-[#003087] font-bold text-xl shadow">
-              PIL
-            </div>
-            <h1 className="text-xl font-bold text-white">Pacific International Lines</h1>
-            <p className="mt-1 text-sm text-blue-200">IT Support Portal</p>
+        <div className="flex items-center justify-center gap-3 mb-8">
+          <img src="/pil-logo.png" alt="PIL" className="h-10 w-10 object-contain" />
+          <div>
+            <p className="text-[#1a2332] font-bold text-base">Pacific International Lines</p>
+            <p className="text-gray-500 text-xs">IT Support Portal</p>
           </div>
+        </div>
 
-          <div className="px-8 py-8">
-            <h2 className="mb-2 text-center text-lg font-semibold text-gray-800">Reset Password</h2>
-            <p className="mb-6 text-center text-sm text-gray-500">
-              Enter your registered email address and we&apos;ll send you a reset link.
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-[#1a2332]">Reset Password</h2>
+            <p className="text-gray-500 text-sm mt-1">
+              Enter your registered email and we&apos;ll send you a reset link.
             </p>
-
-            {error && <Alert message={error} variant="error" className="mb-4" />}
-            {success && <Alert message={success} variant="success" className="mb-4" />}
-
-            {!success && (
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="relative">
-                  <Input
-                    label="Email Address"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Enter your email"
-                    error={emailError}
-                    required
-                    className="pl-9"
-                  />
-                  <Mail className="absolute left-3 top-[34px] h-4 w-4 text-gray-400" />
-                </div>
-
-                <Button type="submit" loading={loading} className="w-full" size="lg">
-                  Send Reset Link
-                </Button>
-              </form>
-            )}
-
-            <Link
-              href="/login"
-              className="mt-6 flex items-center justify-center gap-2 text-sm text-[#003087] hover:underline font-medium"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back to Sign In
-            </Link>
           </div>
+
+          {error && <Alert message={error} variant="error" className="mb-4" />}
+          {success && <Alert message={success} variant="success" className="mb-4" />}
+
+          {!success && (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="relative">
+                <Input
+                  label="Email Address"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  error={emailError}
+                  required
+                  className="pl-9"
+                />
+                <Mail className="absolute left-3 top-[34px] h-4 w-4 text-gray-400" />
+              </div>
+              <Button type="submit" loading={loading} className="w-full" size="lg">
+                Send Reset Link
+              </Button>
+            </form>
+          )}
+
+          <Link
+            href="/login"
+            className="mt-6 flex items-center justify-center gap-2 text-sm text-[#003087] hover:underline font-medium"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Sign In
+          </Link>
         </div>
       </div>
     </div>

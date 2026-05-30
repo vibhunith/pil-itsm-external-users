@@ -80,11 +80,14 @@ export async function createTicket(
 
   const created = await createRes.json();
   const ticketId: string = created.id;
+  // SharePoint REST API expects the numeric list item ID (same as created.id for list items)
   const spItemId = parseInt(created.fields?.id ?? created.id ?? '0', 10);
 
-  // 4. Upload attachments via SharePoint attachment API
+  // 4. Upload attachments via SharePoint REST API
+  // IMPORTANT: Requires "SharePoint > Sites.ReadWrite.All" Application permission in Azure AD
+  // (separate from the Microsoft Graph Sites.ReadWrite.All permission).
   if (files.length > 0) {
-    await uploadAttachments(ticketId, files);
+    await uploadAttachments(spItemId, files);
   }
 
   // 5. Create activity log
@@ -121,17 +124,24 @@ async function getSharePointSiteUrl(): Promise<string> {
   return cachedSiteUrl;
 }
 
-async function uploadAttachments(itemId: string, files: File[]): Promise<void> {
-  // Graph API does not support PUT /items/{id}/attachments/{name}/$value for list items.
-  // Use the SharePoint REST API instead — same OAuth token works with both.
-  const [siteUrl, token] = await Promise.all([getSharePointSiteUrl(), getSharePointAccessToken()]);
+async function uploadAttachments(spItemId: number, files: File[]): Promise<void> {
+  // SharePoint REST API is required for list item attachments (Graph API doesn't support this).
+  // The app needs "SharePoint > Application permissions > Sites.ReadWrite.All" in Azure AD
+  // (distinct from the Microsoft Graph Sites.ReadWrite.All permission).
+  let siteUrl: string;
+  let token: string;
+  try {
+    [siteUrl, token] = await Promise.all([getSharePointSiteUrl(), getSharePointAccessToken()]);
+  } catch (err) {
+    console.error('Failed to get SharePoint token for attachment upload:', err);
+    console.error('Fix: Add "SharePoint > Sites.ReadWrite.All" Application permission in Azure AD for this app.');
+    return;
+  }
 
   for (const file of files) {
     const buffer = await file.arrayBuffer();
-    // SharePoint REST API: add attachment to list item
-    const safeName = file.name.replace(/'/g, "''"); // escape OData string literal
-    const uploadUrl =
-      `${siteUrl}/_api/web/lists/getByTitle('${TICKETS_LIST}')/items(${itemId})/AttachmentFiles/add(FileName='${safeName}')`;
+    const safeName = file.name.replace(/'/g, "''");
+    const uploadUrl = `${siteUrl}/_api/web/lists/getByTitle('${TICKETS_LIST}')/items(${spItemId})/AttachmentFiles/add(FileName='${safeName}')`;
 
     const res = await fetch(uploadUrl, {
       method: 'POST',
@@ -143,14 +153,37 @@ async function uploadAttachments(itemId: string, files: File[]): Promise<void> {
       body: buffer,
     });
 
-    console.log(`Attachment upload [${file.name}] → HTTP ${res.status} | URL: ${uploadUrl}`);
     if (!res.ok) {
       const errBody = await res.text();
-      console.error(`Failed to upload attachment ${file.name} (${res.status}):`, errBody);
+      console.error(`Attachment upload failed [${file.name}] HTTP ${res.status}:`, errBody);
+      if (res.status === 401) {
+        console.error('401 = missing SharePoint API permission. In Azure AD: App Registrations → your app → API Permissions → Add permission → SharePoint → Application → Sites.ReadWrite.All → Grant admin consent.');
+      }
     } else {
-      console.log(`Attachment uploaded successfully: ${file.name}`);
+      console.log(`Attachment uploaded: ${file.name} → item ${spItemId}`);
     }
   }
+}
+
+function applyClientFilters(
+  tickets: Ticket[],
+  opts: { status?: string; priority?: string; search?: string; orderBy: string; orderDir: 'asc' | 'desc'; page: number; pageSize: number }
+): TicketListResponse {
+  let list = tickets;
+  if (opts.status) list = list.filter((t) => t.status === opts.status);
+  if (opts.priority) list = list.filter((t) => t.priority?.toLowerCase() === opts.priority!.toLowerCase());
+  if (opts.search) {
+    const q = opts.search.toLowerCase();
+    list = list.filter((t) => t.incidentID?.toLowerCase().includes(q) || t.subject?.toLowerCase().includes(q));
+  }
+  list.sort((a, b) => {
+    const aVal = String((a as unknown as Record<string, unknown>)[opts.orderBy] ?? a.created ?? '');
+    const bVal = String((b as unknown as Record<string, unknown>)[opts.orderBy] ?? b.created ?? '');
+    return opts.orderDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+  });
+  const total = list.length;
+  const start = (opts.page - 1) * opts.pageSize;
+  return { tickets: list.slice(start, start + opts.pageSize), total, page: opts.page, pageSize: opts.pageSize };
 }
 
 export async function getTicketsByUser(
@@ -167,43 +200,40 @@ export async function getTicketsByUser(
 ): Promise<TicketListResponse> {
   const { page = 1, pageSize = 10, status, priority, search, orderBy = 'Created', orderDir = 'desc' } = options;
 
-  // Fetch all tickets for this user client-side — externalUserEmailID is not indexed in SharePoint
-  // so server-side $filter on it will fail. For large datasets, index the column in SharePoint admin.
-  // Do NOT use $orderby on fields/* — unindexed columns cause 400. Sort client-side instead.
-  const query = `?$expand=fields&$top=5000`;
+  // Use server-side $filter to only fetch tickets belonging to this user.
+  // NOTE: for this to work reliably at scale, index 'externalUserEmailID' in SharePoint list settings.
+  // For lists under 5000 items it works without an index.
+  const safeEmail = userEmail.replace(/'/g, "''");
+  const filterParts = [`fields/externalUserEmailID eq '${safeEmail}'`];
+  if (status) filterParts.push(`fields/status eq '${status.replace(/'/g, "''")}'`);
+  if (priority) filterParts.push(`fields/priority eq '${priority.replace(/'/g, "''")}'`);
+
+  const filter = `$filter=${filterParts.join(' and ')}`;
+  const query = `?$expand=fields&$top=500&${filter}`;
+
   const [res, lookups] = await Promise.all([
     graphFetch(listItemsPath(TICKETS_LIST, query)),
     fetchMasterLookups().catch(() => undefined),
   ]);
-  if (!res.ok) throw new Error('Failed to fetch tickets');
 
-  const data = await res.json();
-  let allTickets: Ticket[] = (data.value ?? [])
-    .map((item: { id: string; fields: Record<string, unknown> }) => mapTicket(item, lookups))
-    .filter((t: Ticket) => t.externalUserEmailID?.toLowerCase() === userEmail.toLowerCase());
-
-  // Apply client-side filters
-  if (status) allTickets = allTickets.filter((t) => t.status === status);
-  if (priority) allTickets = allTickets.filter((t) => t.priority?.toLowerCase() === priority.toLowerCase());
-  if (search) {
-    const q = search.toLowerCase();
-    allTickets = allTickets.filter(
-      (t) => t.incidentID?.toLowerCase().includes(q) || t.subject?.toLowerCase().includes(q)
-    );
+  if (!res.ok) {
+    // If filter fails (e.g. column not indexed, list > 5000), fall back to full fetch
+    const fallback = await graphFetch(listItemsPath(TICKETS_LIST, `?$expand=fields&$top=5000`));
+    if (!fallback.ok) throw new Error('Failed to fetch tickets');
+    const fbData = await fallback.json();
+    const [res2] = [fbData]; // reuse below
+    const allTicketsFallback: Ticket[] = (fbData.value ?? [])
+      .map((item: { id: string; fields: Record<string, unknown> }) => mapTicket(item, lookups))
+      .filter((t: Ticket) => t.externalUserEmailID?.toLowerCase() === userEmail.toLowerCase());
+    return applyClientFilters(allTicketsFallback, { status, priority, search, orderBy, orderDir, page, pageSize });
   }
 
-  // Client-side sort
-  allTickets.sort((a, b) => {
-    const aVal = String((a as Record<string, unknown>)[orderBy] ?? a.created ?? '');
-    const bVal = String((b as Record<string, unknown>)[orderBy] ?? b.created ?? '');
-    return orderDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-  });
+  const data = await res.json();
+  const allTickets: Ticket[] = (data.value ?? [])
+    .map((item: { id: string; fields: Record<string, unknown> }) => mapTicket(item, lookups));
 
-  const total = allTickets.length;
-  const start = (page - 1) * pageSize;
-  const tickets = allTickets.slice(start, start + pageSize);
-
-  return { tickets, total, page, pageSize };
+  // status/priority were filtered server-side; only search needs client-side filtering
+  return applyClientFilters(allTickets, { status: undefined, priority: undefined, search, orderBy, orderDir, page, pageSize });
 }
 
 export async function getTicketById(ticketId: string): Promise<Ticket | null> {
@@ -218,10 +248,15 @@ export async function getTicketById(ticketId: string): Promise<Ticket | null> {
 }
 
 export async function getDashboardStats(userEmail: string): Promise<DashboardStats> {
-  // Fetch all and filter client-side (externalUserEmailID is not indexed)
-  // Do NOT use $select with $expand=fields — they conflict and cause Graph to return no fields.
-  const query = `?$expand=fields&$top=5000`;
-  const res = await graphFetch(listItemsPath(TICKETS_LIST, query));
+  const safeEmail = userEmail.replace(/'/g, "''");
+  let query = `?$expand=fields&$top=500&$filter=fields/externalUserEmailID eq '${safeEmail}'`;
+  let res = await graphFetch(listItemsPath(TICKETS_LIST, query));
+
+  // Fall back to full fetch if filter not supported
+  if (!res.ok) {
+    query = `?$expand=fields&$top=5000`;
+    res = await graphFetch(listItemsPath(TICKETS_LIST, query));
+  }
   if (!res.ok) return { total: 0, open: 0, inProgress: 0, closed: 0 };
 
   const data = await res.json();
@@ -253,6 +288,17 @@ export async function getTicketOwner(ticketId: string): Promise<{ id: string; ex
     id: item.id,
     externalUserEmailID: String(item.fields?.externalUserEmailID ?? ''),
   };
+}
+
+export async function reopenTicket(ticketId: string): Promise<void> {
+  const res = await graphFetch(
+    `/sites/${SITE_ID}/lists/${TICKETS_LIST}/items/${ticketId}/fields`,
+    { method: 'PATCH', body: JSON.stringify({ status: 'Open' }) }
+  );
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to reopen ticket: ${err}`);
+  }
 }
 
 export async function getTicketAttachments(ticketId: string): Promise<{ name: string; contentUrl: string }[]> {

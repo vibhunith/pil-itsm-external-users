@@ -28,9 +28,10 @@ function isHtml(str: string) {
 interface Props {
   ticketId: string;
   currentUserEmail: string;
+  apiBase?: string;
 }
 
-export default function ConversationSection({ ticketId, currentUserEmail }: Props) {
+export default function ConversationSection({ ticketId, currentUserEmail, apiBase = '/api/tickets' }: Props) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -45,7 +46,7 @@ export default function ConversationSection({ ticketId, currentUserEmail }: Prop
 
   const fetchConversations = useCallback(async () => {
     try {
-      const res = await fetch(`/api/tickets/${ticketId}/conversations`);
+      const res = await fetch(`${apiBase}/${ticketId}/conversations`);
       if (res.ok) {
         const data = await res.json();
         setConversations(Array.isArray(data) ? data : []);
@@ -130,7 +131,7 @@ export default function ConversationSection({ ticketId, currentUserEmail }: Prop
     setSending(true);
     setError('');
     try {
-      const res = await fetch(`/api/tickets/${ticketId}/conversations`, {
+      const res = await fetch(`${apiBase}/${ticketId}/conversations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: htmlMessage }),

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import Badge from '@/components/ui/Badge';
 import ActivityTimelineSection from '@/components/tickets/ActivityTimelineSection';
 import ConversationSection from '@/components/tickets/ConversationSection';
+import ReopenTicketButton from '@/components/tickets/ReopenTicketButton';
 import { formatDate, formatDateTime } from '@/lib/utils';
 import { getSession } from '@/lib/auth/session';
 import { getTicketById, getTicketAttachments } from '@/lib/graph/tickets';
@@ -67,7 +68,10 @@ export default async function TicketDetailPage({
             Submitted on {formatDate(ticket.created)}
           </p>
         </div>
-        <Badge type="status">{ticket.status}</Badge>
+        <div className="flex items-center gap-3">
+          <Badge type="status">{ticket.status}</Badge>
+          <ReopenTicketButton ticketId={id} status={ticket.status} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">

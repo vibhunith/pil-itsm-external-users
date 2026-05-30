@@ -11,7 +11,7 @@ export default async function PortalLayout({ children }: { children: React.React
     <div className="min-h-screen bg-gray-50">
       <Header user={user} />
       <Sidebar />
-      <main className="ml-56 pt-16">
+      <main className="ml-[88px] pt-14">
         <div className="p-6">{children}</div>
       </main>
     </div>

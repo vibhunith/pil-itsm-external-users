@@ -5,6 +5,12 @@ const SYSTEMS_LIST = process.env.SP_LIST_SYSTEMS!;
 const MODULES_LIST = process.env.SP_LIST_MODULES!;
 const SUBMODULES_LIST = process.env.SP_LIST_SUBMODULES!;
 
+// Cache master lookups for 5 minutes — they change very rarely
+let masterCache: {
+  data: { systems: Map<number, string>; modules: Map<number, string>; subModules: Map<number, string> };
+  expiresAt: number;
+} | null = null;
+
 export async function getSystems(): Promise<SystemItem[]> {
   const query = `?$expand=fields&$top=500`;
   const res = await graphFetch(listItemsPath(SYSTEMS_LIST, query));
@@ -72,16 +78,20 @@ export async function fetchMasterLookups(): Promise<{
   modules: Map<number, string>;
   subModules: Map<number, string>;
 }> {
+  if (masterCache && masterCache.expiresAt > Date.now()) return masterCache.data;
+
   const [systems, modules, subModules] = await Promise.all([
     getSystems(),
     getAllModules(),
     getAllSubModules(),
   ]);
-  return {
+  const data = {
     systems: new Map(systems.map((s) => [parseInt(s.id, 10), s.system])),
     modules: new Map(modules.map((m) => [parseInt(m.id, 10), m.module])),
     subModules: new Map(subModules.map((sm) => [parseInt(sm.id, 10), sm.subModule])),
   };
+  masterCache = { data, expiresAt: Date.now() + 5 * 60 * 1000 };
+  return data;
 }
 
 export async function getSubModulesByModule(moduleId: string): Promise<SubModuleItem[]> {

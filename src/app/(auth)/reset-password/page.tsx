@@ -128,20 +128,23 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#003087] via-[#004BB4] to-[#0066CC] flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-          <div className="bg-[#003087] px-8 py-6 text-center">
-            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-xl bg-white text-[#003087] font-bold text-xl shadow">PIL</div>
-            <h1 className="text-xl font-bold text-white">Pacific International Lines</h1>
-            <p className="mt-1 text-sm text-blue-200">IT Support Portal</p>
+        <div className="flex items-center justify-center gap-3 mb-8">
+          <img src="/pil-logo.png" alt="PIL" className="h-10 w-10 object-contain" />
+          <div>
+            <p className="text-[#1a2332] font-bold text-base">Pacific International Lines</p>
+            <p className="text-gray-500 text-xs">IT Support Portal</p>
           </div>
-          <div className="px-8 py-8">
-            <h2 className="mb-6 text-center text-lg font-semibold text-gray-800">Set New Password</h2>
-            <Suspense fallback={<div className="text-center text-sm text-gray-500">Loading...</div>}>
-              <ResetPasswordForm />
-            </Suspense>
+        </div>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-[#1a2332]">Set New Password</h2>
+            <p className="text-gray-500 text-sm mt-1">Choose a strong password for your account.</p>
           </div>
+          <Suspense fallback={<div className="text-center text-sm text-gray-500">Loading...</div>}>
+            <ResetPasswordForm />
+          </Suspense>
         </div>
       </div>
     </div>

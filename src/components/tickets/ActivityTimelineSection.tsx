@@ -15,16 +15,17 @@ interface ActivityLog {
 interface Props {
   ticketId: string;
   initialLogs: ActivityLog[];
+  apiBase?: string;
 }
 
-export default function ActivityTimelineSection({ ticketId, initialLogs }: Props) {
+export default function ActivityTimelineSection({ ticketId, initialLogs, apiBase = '/api/tickets' }: Props) {
   const [logs, setLogs] = useState<ActivityLog[]>(initialLogs);
   const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const res = await fetch(`/api/tickets/${ticketId}`);
+      const res = await fetch(`${apiBase}/${ticketId}`);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.activityLogs)) setLogs(data.activityLogs);

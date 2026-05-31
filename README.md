@@ -195,6 +195,12 @@ Main Service Request records created by this portal. Key columns:
 - SR detail: conversation thread + activity timeline
 
 ### Auth
+- **Microsoft SSO (internal users):** "Sign in with Microsoft" on the login page uses Entra ID
+  (OpenID Connect auth-code + PKCE) against the single-tenant app registration. Only Yoda Tech
+  accounts can sign in — enforced by the tenant-specific authority, the token `tid`, and an email
+  domain check (`SSO_ALLOWED_DOMAIN`, default `yoda-tech.com`). SSO users skip the SharePoint
+  password check. Requires the redirect URI `${NEXT_PUBLIC_APP_URL}/api/auth/sso/callback` to be
+  registered on the app registration (Web platform).
 - Email + password login against `ITSM_ExternalUsers_Registration` SharePoint list
 - **Self-service registration** (`/register`, "Request access" on the login page): new users submit
   first name, last name, email, company, username and password. The record is created in

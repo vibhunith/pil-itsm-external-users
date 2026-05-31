@@ -1,5 +1,5 @@
 'use client';
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -23,6 +23,12 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
   const [errors, setErrors] = useState<{ username?: string; password?: string }>({});
+
+  // Surface any error passed back from the SSO callback (?error=...)
+  useEffect(() => {
+    const e = new URLSearchParams(window.location.search).get('error');
+    if (e) setError(e);
+  }, []);
 
   function validate(): boolean {
     const errs: typeof errors = {};
@@ -142,6 +148,26 @@ export default function LoginPage() {
             </div>
 
             {error && <Alert message={error} variant="error" className="mb-5" />}
+
+            {/* SSO — internal Yoda Tech accounts */}
+            <a
+              href="/api/auth/sso/login"
+              className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            >
+              <svg width="16" height="16" viewBox="0 0 21 21" aria-hidden="true">
+                <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+                <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+                <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+                <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+              </svg>
+              Sign in with Microsoft
+            </a>
+
+            <div className="my-5 flex items-center gap-3">
+              <div className="h-px flex-1 bg-gray-200" />
+              <span className="text-xs text-gray-400">or sign in with credentials</span>
+              <div className="h-px flex-1 bg-gray-200" />
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-5" noValidate>
               <div className="relative">

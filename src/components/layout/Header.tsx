@@ -1,8 +1,9 @@
 'use client';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { LogOut, Bell, User } from 'lucide-react';
+import { LogOut, Bell, User, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import type { SessionUser } from '@/types/user';
+import { useSidebar } from '@/components/layout/SidebarContext';
 
 interface HeaderProps {
   user: SessionUser;
@@ -10,6 +11,7 @@ interface HeaderProps {
 
 export default function Header({ user }: HeaderProps) {
   const router = useRouter();
+  const { collapsed, toggle } = useSidebar();
 
   async function handleLogout() {
     // Clear per-user localStorage state before leaving
@@ -37,8 +39,19 @@ export default function Header({ user }: HeaderProps) {
           />
         </div>
 
+        {/* Collapse / expand the left panel */}
+        <button
+          onClick={toggle}
+          className="flex items-center justify-center h-8 w-8 rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition-colors ml-2 flex-shrink-0"
+          title={collapsed ? 'Expand menu' : 'Collapse menu'}
+          aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
+          aria-pressed={collapsed}
+        >
+          {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+        </button>
+
         {/* Brand */}
-        <div className="flex items-center ml-4 flex-1">
+        <div className="flex items-center ml-3 flex-1">
           <div>
             <p className="text-gray-800 font-semibold text-sm leading-tight">Pacific International Lines</p>
             <p className="text-gray-400 text-[11px]">IT Support Portal</p>

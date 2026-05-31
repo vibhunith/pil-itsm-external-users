@@ -3,9 +3,11 @@ import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, Ticket, Wrench, PlusSquare, LayoutList, Check, FileText, List } from 'lucide-react';
+import { useSidebar } from '@/components/layout/SidebarContext';
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { collapsed } = useSidebar();
   const [incidentOpen, setIncidentOpen] = useState(false);
   const [serviceOpen, setServiceOpen] = useState(false);
   const incidentRef = useRef<HTMLDivElement>(null);
@@ -36,7 +38,12 @@ export default function Sidebar() {
   }, [pathname]);
 
   return (
-    <aside className="fixed top-14 left-0 bottom-0 w-[88px] bg-white border-r border-gray-200 z-40 flex flex-col">
+    <aside
+      className={`fixed top-14 left-0 bottom-0 w-[88px] bg-white border-r border-gray-200 z-40 flex flex-col transition-transform duration-200 ease-in-out ${
+        collapsed ? '-translate-x-full' : 'translate-x-0'
+      }`}
+      aria-hidden={collapsed}
+    >
       <nav className="flex flex-col items-center gap-1 py-4 w-full">
 
         {/* Home */}

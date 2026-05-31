@@ -236,6 +236,27 @@ export async function getTicketsByUser(
   return applyClientFilters(allTickets, { status: undefined, priority: undefined, search, orderBy, orderDir, page, pageSize });
 }
 
+// System-wide fetch used only for the "similar tickets" suggestion feature.
+// Returns tickets across ALL users (no externalUserEmailID filter) so suggestions
+// can surface relevant issues raised by others. The caller is responsible for
+// honouring access rules (owner-only detail view, read-only preview otherwise).
+export async function getAllTicketsForMatching(limit = 2000): Promise<Ticket[]> {
+  const top = Math.min(Math.max(limit, 1), 5000);
+  const [res, lookups] = await Promise.all([
+    graphFetch(listItemsPath(TICKETS_LIST, `?$expand=fields&$top=${top}&$orderby=fields/Created desc`)),
+    fetchMasterLookups().catch(() => undefined),
+  ]);
+  if (!res.ok) {
+    // $orderby on Created can require an index on large lists; retry without it.
+    const fallback = await graphFetch(listItemsPath(TICKETS_LIST, `?$expand=fields&$top=${top}`));
+    if (!fallback.ok) throw new Error('Failed to fetch tickets for matching');
+    const fbData = await fallback.json();
+    return (fbData.value ?? []).map((item: { id: string; fields: Record<string, unknown> }) => mapTicket(item, lookups));
+  }
+  const data = await res.json();
+  return (data.value ?? []).map((item: { id: string; fields: Record<string, unknown> }) => mapTicket(item, lookups));
+}
+
 export async function getTicketById(ticketId: string): Promise<Ticket | null> {
   const [res, lookups] = await Promise.all([
     graphFetch(`/sites/${SITE_ID}/lists/${TICKETS_LIST}/items/${ticketId}?$expand=fields`),

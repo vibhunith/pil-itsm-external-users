@@ -187,6 +187,19 @@ Main Service Request records created by this portal. Key columns:
 - Create tickets with system/module/submodule selection, file attachments
 - Ticket detail: SLA deadlines, attachments, conversation thread, activity timeline
 - Reopen closed/resolved/rejected tickets
+- **Similar / related tickets (Claude):** while drafting a ticket, the "Related tickets" panel
+  suggests existing tickets with matching context. The route (`POST /api/tickets/similar`) coarse-
+  filters all tickets by keyword + system/module overlap, then `claude-opus-4-8` semantically ranks
+  the top candidates (structured JSON output). Search is **system-wide**. Clicking a suggestion:
+  the current user's own tickets open the full detail view (`/tickets/[id]`); tickets raised by
+  others open a **read-only view** (`/tickets/[id]/readonly`) that shows the issue and its
+  **resolution (RCA + resolution note)** but omits the activity timeline, conversation, attachments,
+  and requester identity. Requires `ANTHROPIC_API_KEY`; without it the panel stays hidden and ticket
+  creation is unaffected.
+
+### Layout
+- **Collapsible left panel:** the sidebar toggle in the header slides the navigation rail away so
+  the main content reclaims the full width. The preference persists per browser (`localStorage`).
 
 ### Service Requests
 - 5-step creation wizard: Service Type → Categorization → Request Details → Additional Details → Review & Submit

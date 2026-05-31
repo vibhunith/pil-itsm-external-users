@@ -7,6 +7,7 @@ import Select from '@/components/ui/Select';
 import Alert from '@/components/ui/Alert';
 import Spinner from '@/components/ui/Spinner';
 import { CheckCircle2, Upload, X, FileText, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import SimilarTicketsPanel from '@/components/tickets/SimilarTicketsPanel';
 import type { SystemItem, ModuleItem, SubModuleItem } from '@/types/master';
 
 const STEPS = [
@@ -522,6 +523,17 @@ export default function CreateTicketPage() {
           )}
         </div>
       </div>
+
+      {/* Surface existing tickets with similar context while the user is drafting */}
+      {step <= 4 && (
+        <SimilarTicketsPanel
+          subject={subject}
+          issueDescription={issueDescription}
+          system={system}
+          module={module}
+          subModule={subModule}
+        />
+      )}
     </div>
   );
 }

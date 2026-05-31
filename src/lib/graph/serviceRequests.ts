@@ -249,6 +249,24 @@ export async function getSRsByUser(
   return { items: all.slice(start, start + pageSize), total };
 }
 
+// Dashboard counts for the current user's service requests, mirroring the tickets stats.
+// Status vocabulary varies, so buckets are matched tolerantly.
+export async function getSRDashboardStats(
+  userEmail: string
+): Promise<{ total: number; open: number; inProgress: number; closed: number }> {
+  const { items, total } = await getSRsByUser(userEmail, { page: 1, pageSize: 100000 });
+  let open = 0;
+  let inProgress = 0;
+  let closed = 0;
+  for (const sr of items) {
+    const s = (sr.status || '').toLowerCase();
+    if (/progress/.test(s)) inProgress++;
+    else if (/closed|resolved|completed|fulfilled|done|rejected/.test(s)) closed++;
+    else open++; // open / new / submitted / pending / waiting / etc.
+  }
+  return { total, open, inProgress, closed };
+}
+
 export async function getSRById(id: string): Promise<ServiceRequest | null> {
   const res = await graphFetch(
     `/sites/${SITE_ID}/lists/${IT_SERVICE_LIST}/items/${id}?$expand=fields`

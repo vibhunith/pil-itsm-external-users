@@ -1,0 +1,4 @@
+# Code owners for this repository.
+# Every pull request requires approval from the owner before it can be merged.
+# (Branch protection on `main` is configured to require Code Owner review.)
+* @vibhunith
